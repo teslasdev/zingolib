@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateWalletResponse {
+    success : bool,
     address: String,
     wallet_id: String,
 }
@@ -104,9 +105,7 @@ async fn create_wallet(data: web::Data<AppState>) -> impl Responder {
     let zingo_cli_path = "./target/release/zingo-cli";
     
     let output = match Command::new(zingo_cli_path)
-        .args(&[
-            "--data-dir", &data_dir
-        ])
+        .args(&["--data-dir", &data_dir])
         .output()
     {
         Ok(output) => {
@@ -124,9 +123,6 @@ async fn create_wallet(data: web::Data<AppState>) -> impl Responder {
         }
     };
 
-   
-
-
     if !output.status.success() {
         let error = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
         eprintln!("zingo-cli init error: {}", error);
@@ -135,14 +131,10 @@ async fn create_wallet(data: web::Data<AppState>) -> impl Responder {
             error: error.to_string(),
         });
     }
-
     
     // Get the address for this wallet
     let address_output = match Command::new("./target/release/zingo-cli")
-        .args(&[
-            "--data-dir", &data_dir,
-            "addresses",
-        ])
+        .args(&["--data-dir", &data_dir, "addresses"])
         .output()
     {
         Ok(output) => output,
@@ -156,32 +148,37 @@ async fn create_wallet(data: web::Data<AppState>) -> impl Responder {
     };
 
     let address = if address_output.status.success() {
-    let output_str = str::from_utf8(&address_output.stdout).unwrap_or("").trim();
-    
-    // Look for the encoded_address field
-    if let Some(addr_start) = output_str.find("\"encoded_address\": \"") {
-        let addr_start = addr_start + "\"encoded_address\": \"".len();
-        if let Some(addr_end) = output_str[addr_start..].find('\"') {
-            output_str[addr_start..addr_start + addr_end].to_string()
-        } else {
-            "Address format error".to_string()
-        }
+        let output_str = str::from_utf8(&address_output.stdout).unwrap_or("").trim();
+        
+        // Look for the encoded_address field
+        if let Some(addr_start) = output_str.find("\"encoded_address\": \"") {
+            let addr_start = addr_start + "\"encoded_address\": \"".len();
+            if let Some(addr_end) = output_str[addr_start..].find('\"') {
+                output_str[addr_start..addr_start + addr_end].to_string()
+            } else {
+                "Address format error".to_string()
+            }
         } else {
             "Address not found in output".to_string()
         }
     } else {
         "Address not available".to_string()
     };
+
     // Store wallet data
     let wallet_data = WalletData {
         address: address.clone(),
         data_dir: data_dir.clone(),
     };
+    
     {
         let mut wallets = data.wallets.lock().unwrap();
         wallets.insert(wallet_id.clone(), wallet_data);
     }
+
+    // SINGLE SUCCESS RESPONSE
     HttpResponse::Ok().json(CreateWalletResponse {
+        success : true,
         address,
         wallet_id,
     })
