@@ -47,10 +47,6 @@ struct ErrorResponse {
     error: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct SeedRequest {
-    seed_phrase: String,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WalletSummary {
