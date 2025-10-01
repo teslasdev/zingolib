@@ -30,8 +30,6 @@ struct BalanceResponse {
 #[derive(Debug, Serialize, Deserialize)]
 struct SendRequest {
     to_address: String,
-    amount: String,
-    memo: Option<String>,
     wallet_id: Option<String>,
 }
 
@@ -295,50 +293,25 @@ async fn get_balance(
 }
 
 async fn send_zec(
-    data: web::Data<AppState>,
+    _data: web::Data<AppState>,
     send_req: web::Json<SendRequest>,
 ) -> impl Responder {
-    let wallets = data.wallets.lock().unwrap();
-    
-    // Use default wallet if none specified, or get specific wallet
-    let wallet_data = if let Some(wallet_id) = &send_req.wallet_id {
-        match wallets.get(wallet_id) {
-            Some(data) => data,
-            None => {
-                return HttpResponse::NotFound().json(ErrorResponse {
-                    success: false,
-                    error: "Wallet not found".to_string(),
-                });
-            }
-        }
-    } else {
-        // Use first wallet as default (for simplicity)
-        match wallets.values().next() {
-            Some(data) => data,
-            None => {
-                return HttpResponse::BadRequest().json(ErrorResponse {
-                    success: false,
-                    error: "No wallets available".to_string(),
-                });
-            }
+    let data_dir = match &send_req.wallet_id {
+        Some(wallet_id) => format!("./wallets/{}", wallet_id),
+        None => {
+            return HttpResponse::BadRequest().json(ErrorResponse {
+                success: false,
+                error: "Wallet ID is required".to_string(),
+            });
         }
     };
 
-    let mut args = vec![
-        "--data-dir".to_string(),
-        wallet_data.data_dir.clone(),
-        "send".to_string(),
-        send_req.to_address.clone(),
-        send_req.amount.clone(),
-    ];
-
-    if let Some(memo) = &send_req.memo {
-        args.push("--memo".to_string());
-        args.push(memo.clone());
-    }
-
-    let output = match Command::new("/Users/user/Documents/zingolib/target/release/zingo-cli")
-        .args(&args)
+    let output = match Command::new("./target/release/zingo-cli")
+        .args(&[
+            "--data-dir", &data_dir,
+            "send_all",
+            &send_req.to_address,
+        ])
         .output()
     {
         Ok(output) => output,
@@ -353,7 +326,7 @@ async fn send_zec(
 
     if output.status.success() {
         let tx_id = str::from_utf8(&output.stdout).unwrap_or("").trim().to_string();
-        
+
         HttpResponse::Ok().json(SendResponse {
             success: true,
             transaction_id: tx_id,
